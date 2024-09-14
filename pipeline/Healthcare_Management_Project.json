@@ -1,0 +1,413 @@
+{
+	"name": "Healthcare_Management_Project",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK_ALL_FILES_AVAILABLE",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SFTP_GMD_FILES_LIST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(length(activity('SFTP_GMD_FILES_LIST').output.childItems),4)\n",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Web3",
+							"type": "WebActivity",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": []
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Script1",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "SqlServer",
+								"type": "LinkedServiceReference"
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "Query",
+										"text": "Truncate Table [ubc].[Appeals];\r\nTruncate Table [ubc].[Claims];\r\nTruncate Table [ubc].[Contacts];\r\nTruncate Table [ubc].[Copays];\r\nTruncate Table [ubc].[Diagnoses];\r\nTruncate Table [ubc].[Prescriptions];\r\nTruncate Table [ubc].[Status;"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ITERATE_EACH_FILE",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "CHECK_ALL_FILES_AVAILABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('SFTP_GMD_FILES_LIST').output.childItems",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "FILENAME",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "FILE_NAME",
+								"value": {
+									"value": "@item()",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "VERIFY FILE NAME",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "FILENAME",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@and(\r\n    contains(item().name,'csv'),\r\n    contains(item().type,'File')\r\n)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Wait1",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "SFTP_TO_ADLS",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"enableStaging": false
+										}
+									},
+									{
+										"name": "TABLE_NAME",
+										"type": "SetVariable",
+										"dependsOn": [
+											{
+												"activity": "SFTP_TO_ADLS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "",
+											"value": ""
+										}
+									},
+									{
+										"name": "ADLS_TO_ASQLDB_STAGE_TBL",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "TABLE_NAME",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"enableStaging": false
+										}
+									},
+									{
+										"name": "ADLS_TO_ARCHIVE",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "ADLS_TO_ASQLDB_STAGE_TBL",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"enableStaging": false
+										}
+									},
+									{
+										"name": "MERGE_STAGE_TBL_TARGET_TBL__TRFERENCE_TBL",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "ADLS_TO_ARCHIVE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": []
+									},
+									{
+										"name": "SAVE LOGS",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "MERGE_STAGE_TBL_TARGET_TBL__TRFERENCE_TBL",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": []
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "DELETE_ALL_SFTP_FILES",
+				"type": "Delete",
+				"dependsOn": [
+					{
+						"activity": "ITERATE_EACH_FILE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"enableLogging": true
+				}
+			},
+			{
+				"name": "DELETE_ALL_ADLS_RAW_FILES",
+				"type": "Delete",
+				"dependsOn": [
+					{
+						"activity": "DELETE_ALL_SFTP_FILES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"enableLogging": true
+				}
+			},
+			{
+				"name": "SUCCESS_MAIL",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "DELETE_ALL_ADLS_RAW_FILES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": []
+			},
+			{
+				"name": "FAIL_MAIL",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "SFTP_GMD_FILES_LIST",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "CHECK_ALL_FILES_AVAILABLE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "ITERATE_EACH_FILE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "DELETE_ALL_SFTP_FILES",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "DELETE_ALL_ADLS_RAW_FILES",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": []
+			},
+			{
+				"name": "SFTP_GMD_FILES_LIST",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "GMD_SFTP_TO_ADLS",
+						"type": "DatasetReference"
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			}
+		],
+		"variables": {
+			"FILE_NAME": {
+				"type": "String"
+			},
+			"TABLE_NAME": {
+				"type": "String"
+			}
+		},
+		"annotations": []
+	}
+}
